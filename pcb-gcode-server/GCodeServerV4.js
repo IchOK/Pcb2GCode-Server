@@ -18,6 +18,10 @@ const sslOptions = {
 const app = express();
 const port = 3000;
 
+// Statische Dateien aus dem "www"-Verzeichnis bereitstellen
+const wwwDir = path.join(__dirname, "www");
+app.use(express.static(wwwDir));
+
 // Middleware zum Parsen von URL-encoded Daten (z. B. aus Formularen)
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -44,8 +48,7 @@ const configPath = path.join(__dirname, "config.json");
 // Main Webseite
 //##################################################################################
 app.get("/", (req, res) => {
-  const filePath = path.join(__dirname, "www", "index.html");
-  res.sendFile(filePath);
+  res.sendFile(path.join(wwwDir, "index.html"));
 });
 
 //##################################################################################
@@ -198,39 +201,30 @@ app.get("/get-config", (req, res) => {
 //##################################################################################
 // Speichern der Änderungen an der config.json
 //##################################################################################
-app.post("/save-config", express.urlencoded({ extended: true }), (req, res) => {
-  const configPath = req.body.configPath;
+app.post("/save-config", express.json(), (req, res) => {
+  const configPath = req.body.path; // Der Pfad zur Konfigurationsdatei
+  const configData = req.body.config; // Die Konfigurationsdaten im JSON-Format
 
   if (!configPath) {
-    return res.status(400).send("Kein Konfigurationspfad angegeben.");
+    return res.status(400).json({ success: false, message: "Kein Konfigurationspfad angegeben." });
+  }
+
+  if (!configData || typeof configData !== "object") {
+    return res.status(400).json({ success: false, message: "Ungültige Konfigurationsdaten." });
   }
 
   const absolutPath = path.join(__dirname, configPath);
 
-  // Konfig Daten neu erstellen
-  let config = { pcb2gcode: {} };
-  Object.keys(req.body).forEach((key) => {
-    if (key !== "configPath" && key !== "newKey" && key !== "newValue") {
-      config.pcb2gcode[key] = req.body[key];
-    }
-  });
-
-  // Speichere die aktualisierte Konfiguration
+  // Speichere die Konfigurationsdaten
   try {
+    const config = { pcb2gcode: configData }; // Verpacke die Daten in das erwartete Format
     fs.writeFileSync(absolutPath, JSON.stringify(config, null, 2), "utf-8");
     console.log(`Konfigurationsdatei aktualisiert: ${absolutPath}`);
+    return res.json({ success: true, message: "Speichern erfolgreich!" });
   } catch (err) {
     console.error("Fehler beim Speichern der Konfigurationsdatei:", err);
-    return res.status(500).send("Fehler beim Speichern der Konfigurationsdatei.");
+    return res.status(500).json({ success: false, message: "Fehler beim Speichern der Konfigurationsdatei." });
   }
-
-  // Zeige ein Popup und leite zur Hauptseite weiter
-  res.send(`
-    <script>
-      alert("Speichern erfolgreich!");
-      window.location.href = "/";
-    </script>
-  `);
 });
 
 //##################################################################################

@@ -3,73 +3,72 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PCB G-Code Server</title>
-    <style>
-      #messageBox {
-        display: none;
-        padding: 10px;
-        margin: 10px 0;
-        border-radius: 5px;
-        font-size: 16px;
-      }
-      #messageBox.error {
-        background-color: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
-      }
-      #messageBox.info {
-        background-color: #d1ecf1;
-        color: #0c5460;
-        border: 1px solid #bee5eb;
-      }
-    </style>
+    <title>PCB 2 G-Code - Main</title>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <h1>Projekt erstellen</h1>
-    <div id="messageBox"></div>
-    <form id="createProjectForm" style="margin-bottom: 20px">
-      <input type="text" name="newProject" placeholder="Projektname" required />
-      <button type="submit">Projekt erstellen</button>
-    </form>
-    <h1>Projekt auswählen</h1>
-    <form id="selectProjectForm" style="margin-bottom: 20px">
-      <select name="project" id="projectSelect">
-        <!-- Platzhalter für Projekte -->
-      </select>
-    </form>
-    <h2>Gerber ZIP-Datei hochladen</h2>
-    <form id="uploadForm" enctype="multipart/form-data">
-      <input type="file" name="zipFile" id="zipFileInput" />
-      <button type="submit">Upload</button>
-    </form>
-    <h2>Gerber zu G-Code</h2>
-    <form action="/edit-config" method="get">
-      <input type="hidden" name="configPath" id="configPathInput" />
-      <button type="submit">Bearbeite Konfiguration</button>
-    </form>
-    <form id="runPcb2GcodeForm">
-      <button type="submit">Convert</button>
-    </form>
-    <h2>G-Code ZIP-Datei herunterladen</h2>
-    <form id="downloadZipForm">
-      <button type="submit">Herunterladen</button>
-    </form>
+    <table>
+      <tr>
+        <td colspan="2">
+          <div id="messageBox">
+            <!-- Platzhalter für Meldetext -->
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <div class="sectionHeader">Projekt erstellen</div>
+        </td>
+      </tr>
+      <tr>
+        <td><input type="text" id="newProjectInput" placeholder="Projektname" /></td>
+        <td><button id="createProjectButton">Projekt erstellen</button></td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <div class="sectionHeader">Projekt auswählen</div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <select name="project" id="projectSelect" style="width: 100%; height: 40px">
+            <!-- Platzhalter für Projekte -->
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td>Gerber ZIP-Datei hochladen:</td>
+        <td><button id="uploadButton">Upload</button></td>
+        <input type="file" id="zipFileInput" style="display: none" />
+      </tr>
+      <tr>
+        <td>Konfiguration bearbeiten:</td>
+        <td><button id="editConfigButton">Edit</button></td>
+      </tr>
+      <tr>
+        <td>Gerber in G-Code konvertieren:</td>
+        <td><button id="runPcb2GcodeButton">Convert</button></td>
+      </tr>
+      <tr>
+        <td>G-Code ZIP-Datei herunterladen:</td>
+        <td><button id="downloadZipButton">Download</button></td>
+      </tr>
+    </table>
 
     <script>
-      // Funktion zum Anzeigen von Nachrichten
+      //-------------------------------------------------
+      // FUNKTION - Anzeigen von Nachrichten
+      //-------------------------------------------------
       function showMessage(type, message) {
         const messageBox = document.getElementById("messageBox");
         messageBox.style.display = "block";
         messageBox.className = type; // Setze die Klasse (z. B. "error" oder "info")
         messageBox.textContent = message;
-
-        // Automatisch nach 5 Sekunden ausblenden
-//        setTimeout(() => {
-//          messageBox.style.display = "none";
-//        }, 5000);
       }
 
-      // Funktion zum Laden der Projekte
+      //-------------------------------------------------
+      // FUNKTION - lade Projekte in Projektauswahl
+      //-------------------------------------------------
       async function loadProjects() {
         const projectSelect = document.getElementById("projectSelect");
         try {
@@ -87,11 +86,6 @@
               }
               projectSelect.appendChild(option);
             });
-            const configPathInput = document.getElementById("configPathInput");
-            const selectedProject = projectSelect.value;
-            if (selectedProject) {
-              configPathInput.value = "/projects/" + selectedProject + "/config.json";
-            }
           } else {
             showMessage("error", "Fehler beim Laden der Projekte.");
           }
@@ -101,17 +95,48 @@
         }
       }
 
-      // AJAX für das Formular "Projekt erstellen"
-      document.getElementById("createProjectForm").addEventListener("submit", (event) => {
-        event.preventDefault(); // Verhindert das Standardverhalten des Formulars
+      //-------------------------------------------------
+      // LISTENER - Projekt erstellen
+      //-------------------------------------------------
+      document.getElementById("createProjectButton").addEventListener("click", () => {
+        const newProjectInput = document.getElementById("newProjectInput");
+        const newProject = newProjectInput.value.trim();
 
-        const formData = new FormData(event.target);
-        const newProject = formData.get("newProject");
+        if (!newProject) {
+          showMessage("error", "Bitte geben Sie einen Projektnamen ein.");
+          return;
+        }
 
         fetch("/create-project", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ project: newProject }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              showMessage("info", data.message);
+              loadProjects(); // Lade die Projekte neu
+              newProjectInput.value = ""; // Eingabefeld leeren
+            } else {
+              showMessage("error", data.message);
+            }
+          })
+          .catch((error) => {
+            console.error("Fehler:", error);
+            showMessage("error", "Interner Fehler beim Erstellen.\n" + error);
+          });
+      });
+
+      //-------------------------------------------------
+      // LISTENER - Projekt auswahl
+      //-------------------------------------------------
+      document.getElementById("projectSelect").addEventListener("change", () => {
+        const projectName = document.getElementById("projectSelect").value;
+        fetch("/select-project", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project: projectName }),
         })
           .then((response) => response.json())
           .then((data) => {
@@ -124,20 +149,26 @@
           })
           .catch((error) => {
             console.error("Fehler:", error);
-            showMessage("error", "Interner Fehler beim Erstellen.\n" + error);
+            showMessage("error", "Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.");
           });
       });
 
-      // AJAX für das Formular "Upload"
-      document.getElementById("uploadForm").addEventListener("submit", (event) => {
-        event.preventDefault();
-
-        const formData = new FormData();
+      //-------------------------------------------------
+      // LISTENER - Gerber upload
+      //-------------------------------------------------
+      document.getElementById("uploadButton").addEventListener("click", () => {
         const fileInput = document.getElementById("zipFileInput");
+        fileInput.click();
+      });
+      document.getElementById("zipFileInput").addEventListener("change", (event) => {
+        const fileInput = event.target;
+
         if (fileInput.files.length === 0) {
           showMessage("error", "Bitte wählen Sie eine Datei aus.");
           return;
         }
+
+        const formData = new FormData();
         formData.append("zipFile", fileInput.files[0]);
 
         fetch("/upload", {
@@ -158,10 +189,23 @@
           });
       });
 
-      // AJAX für das Formular "Convert"
-      document.getElementById("runPcb2GcodeForm").addEventListener("submit", (event) => {
-        event.preventDefault();
+      //-------------------------------------------------
+      // LISTENER - Konfiguration bearbeiten
+      //-------------------------------------------------
+      document.getElementById("editConfigButton").addEventListener("click", () => {
+        const projectName = document.getElementById("projectSelect").value;
 
+        if (!projectName) {
+          showMessage("error", "Kein gültiger Konfigurationspfad angegeben.");
+          return;
+        }
+        window.location.href = "/edit.html?configPath=/projects/" + projectName + "/config.json";
+      });
+
+      //-------------------------------------------------
+      // LISTENER - Gerber in G-Code konvertieren
+      //-------------------------------------------------
+      document.getElementById("runPcb2GcodeButton").addEventListener("click", () => {
         fetch("/run-pcb2gcode", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -181,14 +225,13 @@
           });
       });
 
-      // AJAX für das Formular "Download ZIP"
-      document.getElementById("downloadZipForm").addEventListener("submit", (event) => {
-        event.preventDefault();
-
+      //-------------------------------------------------
+      // LISTENER - G-Code download
+      //-------------------------------------------------
+      document.getElementById("downloadZipButton").addEventListener("click", () => {
         fetch("/download-zip")
           .then((response) => {
             if (response.ok) {
-              // Speichere die Response, um später den Header zu lesen
               return response.blob().then((blob) => ({ blob, response }));
             } else {
               throw new Error("Fehler beim Herunterladen der Datei.");
@@ -216,32 +259,19 @@
           });
       });
 
-      // Aktualisiere die hidden Input-Felder beim Laden der Seite
+      //-------------------------------------------------
+      // LISTENER - Seitenausbau
+      //-------------------------------------------------
       window.addEventListener("DOMContentLoaded", () => {
-        loadProjects(); // Lade die Projekte beim Laden der Seite
-      });
-
-      // Aktualisiere die hidden Input-Felder bei Änderung der Projektauswahl
-      const projectSelect = document.getElementById("projectSelect");
-      projectSelect.addEventListener("change", () => {
-        fetch("/select-project", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ project: projectSelect.value }),
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            if (data.success) {
-              showMessage("info", data.message);
-              loadProjects(); // Lade die Projekte neu
-            } else {
-              showMessage("error", data.message);
-            }
-          })
-          .catch((error) => {
-            console.error("Fehler:", error);
-            showMessage("error", "Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.");
-          });
+        const message = sessionStorage.getItem("message");
+        if (message) {
+          const { type, text } = JSON.parse(message);
+          showMessage(type, text);
+          sessionStorage.removeItem("message"); // Nachricht nach dem Anzeigen entfernen
+        } else {
+          showMessage("", "Bitte Aktion auswählen");
+        }
+        loadProjects();
       });
     </script>
   </body>

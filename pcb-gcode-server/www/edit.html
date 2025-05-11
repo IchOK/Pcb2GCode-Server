@@ -1,103 +1,190 @@
 <!DOCTYPE html>
 <html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Konfiguration bearbeiten</title>
-    <script>
-        // Funktion zum Laden der Konfigurationsdaten
-        async function loadConfig() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const configPath = urlParams.get("configPath");
-
-            if (!configPath) {
-                alert("Kein Konfigurationspfad angegeben.");
-                return;
-            }
-
-            try {
-                const response = await fetch(`/get-config?configPath=${encodeURIComponent(configPath)}`);
-                const data = await response.json();
-
-                if (!data.success) {
-                    alert(data.error || "Fehler beim Laden der Konfiguration.");
-                    return;
-                }
-
-                // Fülle die Konfigurationsfelder
-                const configFieldsDiv = document.getElementById("configFields");
-                configFieldsDiv.innerHTML = "";
-
-                for (const [key, value] of Object.entries(data.config.pcb2gcode || {})) {
-                    addConfigField(key, value);
-                }
-
-                // Setze den versteckten configPath-Wert
-                document.getElementById("configPath").value = configPath;
-            } catch (error) {
-                console.error("Fehler beim Laden der Konfiguration:", error);
-                alert("Fehler beim Laden der Konfiguration.");
-            }
-        }
-
-        // Funktion zum Hinzufügen eines neuen Konfigurationsfeldes
-        function addConfigField(key = "", value = "") {
-            const configFieldsDiv = document.getElementById("configFields");
-
-            const field = document.createElement("div");
-            field.className = "configField";
-            field.innerHTML = `
-                <button type="button" onclick="removeConfigField(this)">-</button>
-                <label>${key}</label>
-                <input type="text" name="${key}" value="${value}" />
-            `;
-            configFieldsDiv.appendChild(field);
-        }
-
-        // Funktion zum Entfernen eines Konfigurationsfeldes
-        function removeConfigField(button) {
-            const field = button.parentElement;
-            field.remove();
-        }
-
-        // Funktion zum Hinzufügen eines neuen Parameters über den "+"-Button
-        function addNewParameter() {
-            const newKeyInput = document.getElementById("newKey");
-            const newValueInput = document.getElementById("newValue");
-
-            const newKey = newKeyInput.value.trim();
-            const newValue = newValueInput.value.trim();
-
-            if (!newKey) {
-                alert("Bitte geben Sie einen Parameternamen ein.");
-                return;
-            }
-
-            addConfigField(newKey, newValue);
-
-            // Leere die Eingabefelder
-            newKeyInput.value = "";
-            newValueInput.value = "";
-        }
-
-        // Lade die Konfiguration beim Laden der Seite
-        window.addEventListener("DOMContentLoaded", loadConfig);
-    </script>
-</head>
-<body>
-    <h1>Bearbeite config.json</h1>
-  <form action="/save-config" method="post">
-        <input type="hidden" name="configPath" id="configPath" />
-        <div id="configFields">
-            <!-- Dynamische Konfigurationsfelder werden hier eingefügt -->
-        </div>
-        <div>
-          <button type="button" onclick="addNewParameter()">+</button>
-          <input type="text" name="newKey" id="newKey" placeholder="Parametername" />
-          <input type="text" name="newValue" id="newValue" placeholder="Wert" />
-      </div>
-            <button type="submit">Speichern</button>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PCB 2 G-Code - Konfig</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="sectionHeader">Bearbeite config.json</div>
+    <form action="/save-config" method="post">
+      <input type="hidden" name="configPath" id="configPath" />
+      <table class="configTable" id="configFields">
+        <!-- Dynamische Konfigurationsfelder werden hier eingefügt -->
+      </table>
+      <table class="configTable">
+        <tr>
+          <td><button type="button" onclick="addNewParameter()">+</button></td>
+          <td><input type="text" name="newKey" id="newKey" placeholder="Parametername" /></td>
+          <td><input type="text" name="newValue" id="newValue" placeholder="Wert" /></td>
+        </tr>
+        <tr>
+          <td></td>
+          <td><button type="button" class="abortButton">Abbrechen</button></td>
+          <td><button type="submit">Speichern</button></td>
+        </tr>
+      </table>
     </form>
-    <a href="/">Zurück</a>
-</body>
+
+    <script>
+      //-------------------------------------------------
+      // FUNKTION - lade Konfigdatei
+      //-------------------------------------------------
+      async function loadConfig() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const configPath = urlParams.get("configPath");
+
+        if (!configPath) {
+          alert("Kein Konfigurationspfad angegeben.");
+          return;
+        }
+
+        try {
+          const response = await fetch(`/get-config?configPath=${encodeURIComponent(configPath)}`);
+          const data = await response.json();
+
+          if (!data.success) {
+            alert(data.error || "Fehler beim Laden der Konfiguration.");
+            return;
+          }
+
+          // Fülle die Konfigurationsfelder
+          const configFieldsDiv = document.getElementById("configFields");
+          configFieldsDiv.innerHTML = "";
+
+          for (const [key, value] of Object.entries(data.config.pcb2gcode || {})) {
+            addConfigField(key, value);
+          }
+
+          // Setze den versteckten configPath-Wert
+          document.getElementById("configPath").value = configPath;
+        } catch (error) {
+          console.error("Fehler beim Laden der Konfiguration:", error);
+          alert("Fehler beim Laden der Konfiguration.");
+        }
+      }
+
+      //-------------------------------------------------
+      // FUNKTION - Erstelle Konfigurationszeile
+      //-------------------------------------------------
+      function addConfigField(key = "", value = "") {
+        const configFieldsDiv = document.getElementById("configFields");
+
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td><button type="button" onclick="removeConfigField(this)">-</button></td>
+          <td>${key}</td>
+          <td><input type="text" name="${key}" value="${value}" /></td>
+        `;
+        configFieldsDiv.appendChild(row);
+      }
+
+      //-------------------------------------------------
+      // FUNKTION - Entferne Konfigurationszeile
+      //-------------------------------------------------
+      function removeConfigField(button) {
+        const row = button.closest("tr");
+        row.remove();
+      }
+
+      //-------------------------------------------------
+      // FUNKTION - erstelle einen neuen Parameter
+      //-------------------------------------------------
+      function addNewParameter() {
+        const newKeyInput = document.getElementById("newKey");
+        const newValueInput = document.getElementById("newValue");
+
+        const newKey = newKeyInput.value.trim();
+        const newValue = newValueInput.value.trim();
+
+        if (!newKey) {
+          alert("Bitte geben Sie einen Parameternamen ein.");
+          return;
+        }
+
+        addConfigField(newKey, newValue);
+
+        // Leere die Eingabefelder
+        newKeyInput.value = "";
+        newValueInput.value = "";
+      }
+
+      //-------------------------------------------------
+      // FUNKTION - Nachricht im sessionStorage speichern
+      //-------------------------------------------------
+      function saveMessageToSession(type, text) {
+        const message = { type, text };
+        sessionStorage.setItem("message", JSON.stringify(message));
+      }
+
+      //-------------------------------------------------
+      // LISTENER - Abbruch der Konfiguration
+      //-------------------------------------------------
+      document.querySelector(".abortButton").addEventListener("click", (event) => {
+        event.preventDefault(); // Verhindert das Standardverhalten des Buttons
+        saveMessageToSession("error", "Konfiguration nicht gespeichert");
+        window.location.href = "/"; // Weiterleitung zur Hauptseite
+      });
+
+      //-------------------------------------------------
+      // LISTENER - Speichern der Konfiguration
+      //-------------------------------------------------
+      document.querySelector("form").addEventListener("submit", async (event) => {
+        event.preventDefault(); // Verhindert das Standardverhalten des Formulars
+
+        const formData = new FormData(event.target);
+        const configPath = formData.get("configPath");
+
+        if (!configPath) {
+          saveMessageToSession("error", "Kein Konfigurationspfad angegeben.");
+          window.location.href = "/";
+          return;
+        }
+
+        try {
+          // Sammle nur die Eingabefelder innerhalb von configFields
+          const configFields = document.querySelectorAll("#configFields input");
+          const configData = { path: configPath, config: {} };
+
+          configFields.forEach((input) => {
+            const key = input.name;
+            const value = input.value;
+            if (key) {
+              configData.config[key] = value;
+            }
+          });
+
+          const response = await fetch("/save-config", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(configData),
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            saveMessageToSession("info", result.message || "Speichern erfolgreich!");
+          } else {
+            saveMessageToSession("error", result.message || "Fehler beim Speichern der Konfiguration.");
+          }
+
+          window.location.href = "/"; // Weiterleitung zur Hauptseite
+        } catch (error) {
+          console.error("Fehler beim Speichern:", error);
+          saveMessageToSession("error", "Interner Fehler beim Speichern.");
+          //          window.location.href = "/";
+        }
+      });
+
+      //-------------------------------------------------
+      // LISTENER - Seitenausbau
+      //-------------------------------------------------
+      window.addEventListener("DOMContentLoaded", () => {
+        loadConfig(); // Lade die Projekte beim Laden der Seite
+      });
+    </script>
+  </body>
 </html>
