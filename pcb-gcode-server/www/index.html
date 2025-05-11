@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PCB G-Code Server</title>
+    <style>
+      #messageBox {
+        display: none;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
+        font-size: 16px;
+      }
+      #messageBox.error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      #messageBox.info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Projekt erstellen</h1>
+    <div id="messageBox"></div>
+    <form id="createProjectForm" style="margin-bottom: 20px">
+      <input type="text" name="newProject" placeholder="Projektname" required />
+      <button type="submit">Projekt erstellen</button>
+    </form>
+    <h1>Projekt auswählen</h1>
+    <form id="selectProjectForm" style="margin-bottom: 20px">
+      <select name="project" id="projectSelect">
+        <!-- Platzhalter für Projekte -->
+      </select>
+    </form>
+    <h2>Gerber ZIP-Datei hochladen</h2>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <input type="file" name="zipFile" id="zipFileInput" />
+      <button type="submit">Upload</button>
+    </form>
+    <h2>Gerber zu G-Code</h2>
+    <form action="/edit-config" method="get">
+      <input type="hidden" name="configPath" id="configPathInput" />
+      <button type="submit">Bearbeite Konfiguration</button>
+    </form>
+    <form id="runPcb2GcodeForm">
+      <button type="submit">Convert</button>
+    </form>
+    <h2>G-Code ZIP-Datei herunterladen</h2>
+    <form id="downloadZipForm">
+      <button type="submit">Herunterladen</button>
+    </form>
+
+    <script>
+      // Funktion zum Anzeigen von Nachrichten
+      function showMessage(type, message) {
+        const messageBox = document.getElementById("messageBox");
+        messageBox.style.display = "block";
+        messageBox.className = type; // Setze die Klasse (z. B. "error" oder "info")
+        messageBox.textContent = message;
+
+        // Automatisch nach 5 Sekunden ausblenden
+//        setTimeout(() => {
+//          messageBox.style.display = "none";
+//        }, 5000);
+      }
+
+      // Funktion zum Laden der Projekte
+      async function loadProjects() {
+        const projectSelect = document.getElementById("projectSelect");
+        try {
+          const response = await fetch("/get-projects");
+          const data = await response.json();
+
+          if (data.success) {
+            projectSelect.innerHTML = ""; // Leere die aktuelle Liste
+            data.projects.forEach((project) => {
+              const option = document.createElement("option");
+              option.value = project;
+              option.textContent = project;
+              if (project === data.lastProject) {
+                option.selected = true;
+              }
+              projectSelect.appendChild(option);
+            });
+            const configPathInput = document.getElementById("configPathInput");
+            const selectedProject = projectSelect.value;
+            if (selectedProject) {
+              configPathInput.value = "/projects/" + selectedProject + "/config.json";
+            }
+          } else {
+            showMessage("error", "Fehler beim Laden der Projekte.");
+          }
+        } catch (error) {
+          console.error("Fehler beim Laden der Projekte:", error);
+          showMessage("error", "Interner Fehler beim Laden.\n" + error);
+        }
+      }
+
+      // AJAX für das Formular "Projekt erstellen"
+      document.getElementById("createProjectForm").addEventListener("submit", (event) => {
+        event.preventDefault(); // Verhindert das Standardverhalten des Formulars
+
+        const formData = new FormData(event.target);
+        const newProject = formData.get("newProject");
+
+        fetch("/create-project", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project: newProject }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              showMessage("info", data.message);
+              loadProjects(); // Lade die Projekte neu
+            } else {
+              showMessage("error", data.message);
+            }
+          })
+          .catch((error) => {
+            console.error("Fehler:", error);
+            showMessage("error", "Interner Fehler beim Erstellen.\n" + error);
+          });
+      });
+
+      // AJAX für das Formular "Upload"
+      document.getElementById("uploadForm").addEventListener("submit", (event) => {
+        event.preventDefault();
+
+        const formData = new FormData();
+        const fileInput = document.getElementById("zipFileInput");
+        if (fileInput.files.length === 0) {
+          showMessage("error", "Bitte wählen Sie eine Datei aus.");
+          return;
+        }
+        formData.append("zipFile", fileInput.files[0]);
+
+        fetch("/upload", {
+          method: "POST",
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              showMessage("info", data.message);
+            } else {
+              showMessage("error", data.message);
+            }
+          })
+          .catch((error) => {
+            console.error("Fehler beim Upload:", error);
+            showMessage("error", "Interner Fehler beim Upload.\n" + error);
+          });
+      });
+
+      // AJAX für das Formular "Convert"
+      document.getElementById("runPcb2GcodeForm").addEventListener("submit", (event) => {
+        event.preventDefault();
+
+        fetch("/run-pcb2gcode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              showMessage("info", data.message);
+            } else {
+              showMessage("error", data.message);
+            }
+          })
+          .catch((error) => {
+            console.error("Fehler bei der Konvertierung:", error);
+            showMessage("error", "Interner Fehler bei der Konvertierung.\n" + error);
+          });
+      });
+
+      // AJAX für das Formular "Download ZIP"
+      document.getElementById("downloadZipForm").addEventListener("submit", (event) => {
+        event.preventDefault();
+
+        fetch("/download-zip")
+          .then((response) => {
+            if (response.ok) {
+              // Speichere die Response, um später den Header zu lesen
+              return response.blob().then((blob) => ({ blob, response }));
+            } else {
+              throw new Error("Fehler beim Herunterladen der Datei.");
+            }
+          })
+          .then(({ blob, response }) => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.style.display = "none";
+            a.href = url;
+
+            // Dateiname wird vom Server-Endpunkt definiert
+            const contentDisposition = response.headers.get("Content-Disposition");
+            const fileName = contentDisposition ? contentDisposition.split("filename=")[1].replace(/"/g, "") : "download.zip";
+
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            showMessage("info", "Download erfolgreich!");
+          })
+          .catch((error) => {
+            console.error("Fehler beim Herunterladen:", error);
+            showMessage("error", "Interner Fehler beim Herunterladen.\n" + error);
+          });
+      });
+
+      // Aktualisiere die hidden Input-Felder beim Laden der Seite
+      window.addEventListener("DOMContentLoaded", () => {
+        loadProjects(); // Lade die Projekte beim Laden der Seite
+      });
+
+      // Aktualisiere die hidden Input-Felder bei Änderung der Projektauswahl
+      const projectSelect = document.getElementById("projectSelect");
+      projectSelect.addEventListener("change", () => {
+        fetch("/select-project", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project: projectSelect.value }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              showMessage("info", data.message);
+              loadProjects(); // Lade die Projekte neu
+            } else {
+              showMessage("error", data.message);
+            }
+          })
+          .catch((error) => {
+            console.error("Fehler:", error);
+            showMessage("error", "Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.");
+          });
+      });
+    </script>
+  </body>
+</html>
