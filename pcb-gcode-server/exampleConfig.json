@@ -1,0 +1,53 @@
+{
+  "parameters": {
+    "voronoi": false,
+    "offset": 0.25,
+    "milldrill-diameter": 0.5,
+    "cutter-diameter": 0.5,
+    "metric": true,
+    "metricoutput": true,
+    "mirror-axis": 0.0,
+    "mirror-yaxis": true,
+    "nog64": false,
+    "optimise": 0.0,
+    "tile-x": 1,
+    "tile-y": 1,
+    "tolerance": 0.01,
+    "zchange": 10.0,
+    "zchange-absolute": false,
+    "zero-start": true,
+    "zsafe": 5.0,
+    "extra-passes": 2,
+    "mill-feed": 120,
+    "mill-speed": 10000,
+    "zwork": -0.15,
+    "drill-feed": 60,
+    "drill-side": "auto",
+    "drill-speed": 10000,
+    "milldrill": true,
+    "nog81": false,
+    "nog91-1": false,
+    "onedrill": false,
+    "zdrill": -2.0,
+    "cut-feed": 120,
+    "cut-infeed": 0.25,
+    "cut-side": "auto",
+    "cut-speed": 10000,
+    "cut-vertfeed": 60,
+    "fill-outline": true,
+    "zcut": -2.0,
+    "bridges": 0.5,
+    "bridgesnum": 2,
+    "zbridges": -0.6
+  },
+  "setup": {
+    "layer": true,
+    "milldrill-diameter": 0.5,
+    "cutter-diameter": 0.5,
+    "thicknes": 1.7
+  },
+  "globals": {
+    "drill-offset": 0.2,
+    "cutter-offset": 0.2
+  }
+}

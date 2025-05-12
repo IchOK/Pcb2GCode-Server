@@ -50,6 +50,14 @@ button:hover {
 .abortButton:hover {
   background-color: #c82333; /* Dunkleres Rot beim Hover */
 }
+.addButton {
+  background-color: #31c823;
+}
+
+.addButton:hover {
+  background-color: #1da71d;
+}
+
 input[type="text"],
 select {
   width: 100%; /* Passt sich der Breite der Zelle an */
@@ -76,6 +84,75 @@ select:focus {
   margin-top: 20px;
   text-align: left; /* Text linksbündig */
 }
+.pageTitle {
+  font-size: 30px;
+  font-weight: bold;
+  color: #343a40; /* Blau */
+  border-bottom: 2px solid #343a40; /* Blaue Linie unter dem Text */
+  padding-bottom: 5px;
+  margin-bottom: 5px;
+  margin-top: 20px;
+  text-align: left; /* Text linksbündig */
+}
 .configTable td:first-child {
   width: 40px;
 }
+
+/* Dark Mode Styles */
+body.dark-mode {
+  background-color: #121212;
+  color: #ffffff;
+}
+
+body.dark-mode .pageTitle {
+  color: #ffffff;
+  border-bottom: 2px solid #ffffff;
+}
+
+body.dark-mode .sectionHeader {
+  color: #007bff;
+  border-bottom: 2px solid #007bff;
+}
+
+body.dark-mode input[type="text"],
+body.dark-mode select {
+  background-color: #1e1e1e;
+  color: #ffffff;
+  border: 1px solid #444444;
+}
+
+body.dark-mode input[type="text"]:focus,
+body.dark-mode select:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+}
+
+body.dark-mode button {
+  background-color: #444444;
+  color: #ffffff;
+}
+
+body.dark-mode button:hover {
+  background-color: #555555;
+}
+
+body.dark-mode .abortButton {
+  background-color: #c82333;
+}
+
+body.dark-mode .abortButton:hover {
+  background-color: #a71d2a;
+}
+
+body.dark-mode .addButton {
+  background-color: #1da71d;
+}
+
+body.dark-mode .addButton:hover {
+  background-color: #31c823;
+}
+
+body.dark-mode .configTable td {
+  border: 1px solid #444444;
+}
+

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Konfigurationseditor</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="material-icons.css" />
+  </head>
+  <body>
+    <div class="pageTitle">Projekt - Konfiguration</div>
+    <button id="toggleDarkMode" class="darkModeButton">Dark Mode</button>
+    <form id="configForm">
+      <div id="configSections">
+        <!-- Dynamische Hauptknoten und Konfigurationsfelder werden hier eingefügt -->
+      </div>
+    </form>
+
+    <script>
+      let projectName = "";
+      let globalFlag = false;
+
+      //-------------------------------------------------
+      // FUNKTION - Umschalten des Dark Modes
+      //-------------------------------------------------
+      const toggleDarkMode = () => {
+        document.body.classList.toggle("dark-mode");
+        const button = document.getElementById("toggleDarkMode");
+        if (document.body.classList.contains("dark-mode")) {
+          button.textContent = "Light Mode";
+        } else {
+          button.textContent = "Dark Mode";
+        }
+      };
+
+      document.getElementById("toggleDarkMode").addEventListener("click", toggleDarkMode);
+
+      //-------------------------------------------------
+      // FUNKTION - lade JSON-Daten
+      //-------------------------------------------------
+      async function loadConfig() {
+        if (!projectName) {
+          alert("Kein Projektname angegeben.");
+          return;
+        }
+
+        try {
+          const response = await fetch("/get-configV2", {
+            method: "POST", // Ändere die Methode auf POST
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              projectName: projectName,
+              global: globalFlag,
+            }), // Sende die Parameter als JSON im Body
+          });
+
+          const data = await response.json();
+
+          if (!data.success) {
+            alert(data.error || "Fehler beim Laden der Konfiguration.");
+            return;
+          }
+
+          // Erstelle die Konfig Tabelle
+          const configSectionsDiv = document.getElementById("configSections");
+          configSectionsDiv.innerHTML = "";
+          const table = document.createElement("table");
+          table.className = "configTable";
+          let row;
+
+          // Erstelle je Hauptknoten eine komplette Zeile
+          for (const [node, fields] of Object.entries(data.config || {})) {
+            row = document.createElement("tr");
+            row.innerHTML = `
+              <td colspan="3">
+              <div class="sectionHeader">${node}</div>
+              </td>
+            `;
+            table.appendChild(row);
+
+            // Erstelle die Konfigurationszeilen für jeden Hauptknoten
+            for (const [key, value] of Object.entries(fields)) {
+              row = document.createElement("tr");
+              row.innerHTML = `
+                <td><button type="button" onclick="removeConfigField(this)"><span class="material-icons">remove</span></button></td>
+                <td>${key}</td>
+                <td><input type="text" name="${key}" data-node="${node}" value="${value}" /></td>
+              `;
+              table.appendChild(row);
+            }
+
+            // Füge die "addNewParameter"-Zeile am Ende der Tabelle hinzu
+            row = document.createElement("tr");
+            row.innerHTML = `
+              <td><button type="button" class="addButton" onclick="addNewParameter(this, '${node}')"><span class="material-icons">add</span></button></td>
+              <td><input type="text" placeholder="Parametername" /></td>
+              <td><input type="text" placeholder="Wert" /></td>
+            `;
+            table.appendChild(row);
+          }
+
+          // Füge die Buttons am Ende der Tabelle hinzu
+          row = document.createElement("tr");
+          row.innerHTML = `
+            <td></td>
+            <td><button type="button" class="abortButton" onclick="abortEditing()">Abbrechen</button></td>
+            <td><button type="submit">Speichern</button></td>
+          `;
+          table.appendChild(row);
+
+          configSectionsDiv.appendChild(table);
+        } catch (error) {
+          console.error("Fehler beim Laden der Konfiguration:", error);
+          alert("Fehler beim Laden der Konfiguration.");
+        }
+      }
+
+      //-------------------------------------------------
+      // FUNKTION - Entferne Konfigurationszeile
+      //-------------------------------------------------
+      function removeConfigField(button) {
+        const row = button.closest("tr");
+        row.remove();
+      }
+
+      //-------------------------------------------------
+      // FUNKTION - erstelle einen neuen Parameter
+      //-------------------------------------------------
+      function addNewParameter(button, node) {
+        const row = button.closest("tr");
+        const keyInput = row.querySelector("input[placeholder='Parametername']");
+        const valueInput = row.querySelector("input[placeholder='Wert']");
+
+        const newKey = keyInput.value.trim();
+        const newValue = valueInput.value.trim();
+
+        if (!newKey) {
+          alert("Bitte geben Sie einen Parameternamen ein.");
+          return;
+        }
+
+        const table = row.closest("table");
+        const newRow = document.createElement("tr");
+        newRow.innerHTML = `
+          <td><button type="button" onclick="removeConfigField(this)">-</button></td>
+          <td>${newKey}</td>
+          <td><input type="text" name="${newKey}" data-node="${node}" value="${newValue}" /></td>
+        `;
+
+        // Füge die neue Zeile vor der "addNewParameter"-Zeile ein
+        table.insertBefore(newRow, row);
+
+        // Leere die Eingabefelder
+        keyInput.value = "";
+        valueInput.value = "";
+      }
+
+      //-------------------------------------------------
+      // FUNKTION - Abbruch der Bearbeitung
+      //-------------------------------------------------
+      function abortEditing() {
+        if (confirm("Möchten Sie die Bearbeitung wirklich abbrechen?")) {
+          window.location.href = "/";
+        }
+      }
+
+      //-------------------------------------------------
+      // FUNKTION - Speichern der Konfiguration
+      //-------------------------------------------------
+      document.getElementById("configForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        if (!projectName) {
+          alert("Kein Projektname angegeben.");
+          return;
+        }
+
+        try {
+          const configData = {};
+          const inputs = document.querySelectorAll("#configSections input[data-node]");
+
+          inputs.forEach((input) => {
+            const node = input.getAttribute("data-node");
+            const key = input.name;
+            const value = input.value;
+
+            if (!configData[node]) {
+              configData[node] = {};
+            }
+
+            configData[node][key] = value;
+          });
+
+          const response = await fetch("/save-configV2", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              projectName: projectName,
+              global: globalFlag,
+              config: configData,
+            }),
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            alert("Speichern erfolgreich!");
+            window.location.href = "/";
+          } else {
+            alert(result.message || "Fehler beim Speichern der Konfiguration.");
+          }
+        } catch (error) {
+          console.error("Fehler beim Speichern:", error);
+          alert("Interner Fehler beim Speichern.");
+        }
+      });
+
+      //-------------------------------------------------
+      // FUNKTION - Automatischer Dark Mode
+      //-------------------------------------------------
+      const applyDarkModePreference = () => {
+        const prefersDarkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        if (prefersDarkMode) {
+          document.body.classList.add("dark-mode");
+          const button = document.getElementById("toggleDarkMode");
+          button.textContent = "Light Mode";
+        }
+      };
+
+      //-------------------------------------------------
+      // INITIALISIERUNG
+      //-------------------------------------------------
+      function initialize() {
+        const urlParams = new URLSearchParams(window.location.search);
+        projectName = decodeURIComponent(urlParams.get("projectName") || "");
+        globalFlag = urlParams.get("global") === "true";
+
+        if (!projectName) {
+          alert("Kein Projektname in der URL angegeben.");
+          return;
+        }
+
+        // Setze den Projektname in der pageTitle-Div
+        const pageTitleDiv = document.querySelector(".pageTitle");
+        pageTitleDiv.textContent = `${projectName} - Konfiguration`;
+
+        // Wende die Dark Mode Präferenz an
+        applyDarkModePreference();
+
+        loadConfig();
+      }
+
+      window.addEventListener("DOMContentLoaded", initialize);
+    </script>
+  </body>
+</html>

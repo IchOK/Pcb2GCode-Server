@@ -199,7 +199,8 @@
           showMessage("error", "Kein gültiger Konfigurationspfad angegeben.");
           return;
         }
-        window.location.href = "/edit.html?configPath=/projects/" + projectName + "/config.json";
+        // window.location.href = "/edit.html?projectName=/projects/" + projectName + "/config.json";
+        window.location.href = `/editV2.html?projectName=${encodeURIComponent(projectName)}&global=false`;
       });
 
       //-------------------------------------------------
