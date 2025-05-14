@@ -1,26 +1,15 @@
 const { randomUUID } = require("crypto");
+const Project = require("./ProjectClass");
 
 const sessions = new Map();
 
-const defaultSessionData = {
-  projectName: "",
-  projectPath: "",
-  projectConfig: {},
-  projectSetup: {
-    layers: 1,
-    millDrillDia: 0.5,
-    cutterDia: 0.5,
-    boardThickness: 1.7,
-  },
-  gerberVersion: 0,
-  gcodeVersion: 0,
-  lastActive: Date.now(),
-};
+// Erzeuge ein Default-Objekt der Klasse Project für die Sessiondaten
+const defaultSessionData = new Project();
 
 function createSession(data = {}) {
   const sessionId = randomUUID();
-  // Merge defaults with provided data
-  const sessionData = { ...defaultSessionData, ...data, lastActive: Date.now() };
+  // Erzeuge eine neue Project-Instanz, ggf. mit überschriebenen Daten
+  const sessionData = new Project({ ...defaultSessionData, ...data, lastActive: Date.now() });
   sessions.set(sessionId, sessionData);
   return sessionId;
 }
