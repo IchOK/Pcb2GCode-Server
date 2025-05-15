@@ -4,9 +4,14 @@ const unzipper = require("unzipper");
 const { exec } = require("child_process");
 const archiver = require("archiver");
 const { randomUUID } = require("crypto");
+const { mergeGerberDrilling } = require("./GHerberFunctions");
 
+/**
+ * Entfernt kritische Zeichen für Dateinamen.
+ * @param {string} name - Projektname.
+ * @returns {string} Der bereinigte Projektname.
+ */
 function sanitizeProjectName(name) {
-  // Entfernt kritische Zeichen für Dateinamen
   return name.replace(/[^a-zA-Z0-9_\-]/g, "_");
 }
 
@@ -15,8 +20,21 @@ const ROOT_DIR = __dirname;
 const PROJECTS_DIR = "projects";
 const DEFAULT_CONFIG_FILE = "defaultConfig.json";
 const CONFIG_FILE_NAME = "config.json";
+const DRILLMERGE_FILE_NAME = "Drill_Total.DRL";
 
 class Project {
+  /**
+   * Erstellt eine neue Projektinstanz.
+   * @param {Object} options - Initialisierungsoptionen.
+   * @param {string} [options.projectName] - Name des Projekts.
+   * @param {string} [options.projectPath] - Projektverzeichnis.
+   * @param {Object} [options.projectConfig] - Projekt-Konfiguration.
+   * @param {Object} [options.projectSetup] - Projekteinstellungen.
+   * @param {number} [options.gerberVersion] - Gerber-Version.
+   * @param {number} [options.gcodeVersion] - GCode-Version.
+   * @param {number} [options.lastActive] - Letzter Aktivitätszeitpunkt.
+   * @param {WebSocket} [options.ws] - WebSocket-Referenz.
+   */
   constructor({
     projectName = "",
     projectPath: projectDir = "",
@@ -30,7 +48,7 @@ class Project {
     gerberVersion = 0,
     gcodeVersion = 0,
     lastActive = Date.now(),
-    ws = null, // <--- WebSocket Referenz
+    ws = null,
   } = {}) {
     this.projectName = projectName;
     this.projectDir = projectDir;
@@ -39,80 +57,167 @@ class Project {
     this.gerberVersion = gerberVersion;
     this.gcodeVersion = gcodeVersion;
     this.lastActive = lastActive;
-    this.ws = ws; // <--- WebSocket speichern
+    this.ws = ws;
   }
 
+  /**
+   * Erstellt eine standardisierte Nachrichtenstruktur.
+   * @param {string} typeText - Nachrichtentyp.
+   * @param {string} statusText - Status der Nachricht.
+   * @param {string} msgText - Nachrichtentext.
+   * @param {Object} dataObject - Zusätzliche Daten.
+   * @returns {Object} Die Nachrichtenstruktur.
+   */
   createMessage(typeText, statusText, msgText, dataObject) {
     return { type: typeText, status: statusText, msg: msgText, data: dataObject };
   }
 
+  /**
+   * Setzt die WebSocket-Referenz.
+   * @param {WebSocket} ws - WebSocket-Objekt.
+   */
   setWebSocket(ws) {
     this.ws = ws;
   }
 
+  /**
+   * Sendet eine Nachricht über WebSocket, falls verbunden.
+   * @param {Object} msgObject - Die zu sendende Nachricht.
+   */
   sendWS(msgObject) {
     if (this.ws && this.ws.readyState === 1) {
-      // 1 = OPEN
       this.ws.send(JSON.stringify(msgObject));
     }
   }
 
-  open(projectName, ws) {
-    this.ws = ws;
-    if (this.projectName === projectName) return true;
+  /**
+   * Verarbeitet eine eingehende WebSocket-Nachricht und ruft die passende Methode auf.
+   * @param {string} message - Die empfangene Nachricht (JSON-String).
+   */
+  handleRequenst(message) {
+    let data;
+    try {
+      data = JSON.parse(message);
+    } catch (err) {
+      retMsg = this.createMessage("handleRequenst", "error", err.message, {});
+      this.sendWS(retMsg);
+      return reject(retMsg);
+    }
 
-    this.projectName = projectName;
-    this.projectDir = sanitizeProjectName(projectName);
-    const projectPath = path.join(ROOT_DIR, PROJECTS_DIR, this.projectDir);
+    // Mapping von Nachrichtentyp zu Methodenname
+    const actionMap = {
+      open: () => this.open(data.name),
+      getConfig: () => this.getConfig(),
+      getSetup: () => this.getSetup(),
+      setConfig: () => this.setConfig(data.key, data.value),
+      setSetup: () => this.setSetup(data.key, data.value),
+      load: () => this.load(),
+      save: () => this.save(),
+      // Weitere Aktionen nach Bedarf ergänzen
+    };
 
-    const configPath = path.join(projectPath, CONFIG_FILE_NAME);
-
-    if (!fs.existsSync(configPath)) {
-      //------------------------------------------------------
-      // Projekt oder ProjektKonfiguration existiert nicht
-      //------------------------------------------------------
-      // Projektverzeichnis anlegen
-      fs.mkdirSync(projectPath, { recursive: true });
-      // Default-Konfig einlesen
-      const defaultConfigPath = path.join(ROOT_DIR, DEFAULT_CONFIG_FILE);
-      let defaultConfig = {};
-      if (fs.existsSync(defaultConfigPath)) {
-        defaultConfig = JSON.parse(fs.readFileSync(defaultConfigPath, "utf-8"));
-      }
-      // Default-Konfiguration in config.json speichern
-      this.projectConfig = defaultConfig.projectConfig || {};
-      this.projectSetup = defaultConfig.projectSetup || { layers: 1, millDrillDia: 0.5, cutterDia: 0.5, boardThickness: 1.7 };
-      this.gerberVersion = 0;
-      this.gcodeVersion = 0;
-      this.save();
+    if (typeof actionMap[data.type] === "function") {
+      actionMap[data.type]();
     } else {
-      //------------------------------------------------------
-      // Projekt existiert
-      //------------------------------------------------------
-      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-      if (config) {
-        this.projectName = sanitized;
-        this.projectDir = path.join(projectsPath, sanitized);
-        this.projectConfig = config.projectConfig || {};
-        this.projectSetup = config.projectSetup || { layers: 1, millDrillDia: 0.5, cutterDia: 0.5, boardThickness: 1.7 };
-        this.gerberVersion = config.gerberVersion || 0;
-        this.gcodeVersion = config.gcodeVersion || 0;
-      }
+      retMsg = this.createMessage("handleRequenst", "error", "Unbekannter Anfrage-Typ", {});
+      this.sendWS(retMsg);
+      return reject(retMsg);
     }
   }
 
+  /**
+   * Öffnet ein Projekt und lädt ggf. die Konfiguration.
+   * @param {string} projectName - Name des Projekts.
+   * @returns {boolean|undefined} true, wenn das Projekt bereits geöffnet war.
+   */
+  open(projectName) {
+    return new Promise((resolve, reject) => {
+      this.sendWS(this.createMessage("open", "start", "Projekt öffnen gestartet", {}));
+      this.projectName = projectName;
+      this.projectDir = sanitizeProjectName(projectName);
+      const projectPath = path.join(ROOT_DIR, PROJECTS_DIR, this.projectDir);
+
+      const configPath = path.join(projectPath, CONFIG_FILE_NAME);
+      try {
+        if (!fs.existsSync(configPath)) {
+          //------------------------------------------------------
+          // Projekt oder ProjektKonfiguration existiert nicht
+          //------------------------------------------------------
+          this.sendWS(this.createMessage("open", "run", "Projekt wird erstellt", { state: "create", dir: projectPath }));
+          // Projektverzeichnis anlegen
+          fs.mkdirSync(projectPath, { recursive: true });
+          // Default-Konfig einlesen
+          const defaultConfigPath = path.join(ROOT_DIR, DEFAULT_CONFIG_FILE);
+          let defaultConfig = {};
+          if (fs.existsSync(defaultConfigPath)) {
+            this.sendWS(this.createMessage("open", "run", "Default Konfig wird gelesen", { state: "getDefault", dir: defaultConfigPath }));
+            defaultConfig = JSON.parse(fs.readFileSync(defaultConfigPath, "utf-8"));
+          }
+          // Default-Konfiguration in config.json speichern
+          this.projectConfig = defaultConfig.projectConfig || {};
+          this.projectSetup = defaultConfig.projectSetup || { layers: 1, millDrillDia: 0.5, cutterDia: 0.5, boardThickness: 1.7 };
+          this.gerberVersion = 0;
+          this.gcodeVersion = 0;
+          this.save(false);
+          retMsg = this.createMessage("open", "done", "Projekt erstellt", this);
+          this.sendWS(retMsg);
+          return resolve(retMsg);
+        } else {
+          //------------------------------------------------------
+          // Projekt existiert
+          //------------------------------------------------------
+          this.sendWS(this.createMessage("open", "run", "Projekt wird eingelsen", { state: "get", dir: projectPath }));
+          const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+          if (config) {
+            this.projectName = sanitized;
+            this.projectDir = path.join(projectsPath, sanitized);
+            this.projectConfig = config.projectConfig || {};
+            this.projectSetup = config.projectSetup || { layers: 1, millDrillDia: 0.5, cutterDia: 0.5, boardThickness: 1.7 };
+            this.gerberVersion = config.gerberVersion || 0;
+            this.gcodeVersion = config.gcodeVersion || 0;
+            retMsg = this.createMessage("open", "done", "Projekt geöffnet", this);
+            this.sendWS(retMsg);
+            return resolve(retMsg);
+          } else {
+            retMsg = this.createMessage("open", "error", "Projekt-Konfiguration ist leer", {});
+            this.sendWS(retMsg);
+            return reject(retMsg);
+          }
+        }
+      } catch (err) {
+        retMsg = this.createMessage("open", "error", err.message, {});
+        this.sendWS(retMsg);
+        return reject(retMsg);
+      }
+    });
+  }
+
+  /**
+   * Gibt die Projekt-Konfiguration zurück und sendet sie per WebSocket.
+   * @returns {Object} Die Konfigurationsnachricht.
+   */
   getConfig() {
     let retMsg = this.createMessage("getConfig", "done", "Konfiguration gelesen", this.projectConfig);
     this.sendWS(retMsg);
     return retMsg;
   }
 
+  /**
+   * Gibt die Projekt-Setup-Daten zurück und sendet sie per WebSocket.
+   * @returns {Object} Die Setup-Nachricht.
+   */
   getSetup() {
     let retMsg = this.createMessage("getSetup", "done", "Setup gelesen", this.projectSetup);
     this.sendWS(retMsg);
     return retMsg;
   }
 
+  /**
+   * Setzt einen Wert in der Projekt-Konfiguration und sendet eine Nachricht.
+   * @param {string} key - Konfigurationsschlüssel.
+   * @param {*} value - Neuer Wert.
+   * @returns {Object} Die Rückmeldung.
+   */
   setConfig(key, value) {
     this.projectConfig[key] = value;
     let data = {};
@@ -123,6 +228,12 @@ class Project {
     return retMsg;
   }
 
+  /**
+   * Setzt einen Wert im Projekt-Setup und sendet eine Nachricht.
+   * @param {string} key - Setup-Schlüssel.
+   * @param {*} value - Neuer Wert.
+   * @returns {Object} Die Rückmeldung.
+   */
   setSetup(key, value) {
     let data = {};
     let retMsg = {};
@@ -138,6 +249,10 @@ class Project {
     return retMsg;
   }
 
+  /**
+   * Lädt die Projekt-Konfiguration aus der Datei.
+   * @returns {Object} Die Rückmeldung.
+   */
   load() {
     let retMsg = {};
     const configPath = path.join(ROOT_DIR, PROJECTS_DIR, this.projectDir, CONFIG_FILE_NAME);
@@ -167,6 +282,11 @@ class Project {
     return retMsg;
   }
 
+  /**
+   * Speichert die aktuelle Projekt-Konfiguration in die Datei.
+   * @param {boolean} [sendMsg=true] - Ob eine Nachricht gesendet werden soll.
+   * @returns {Object} Die Rückmeldung.
+   */
   save(sendMsg = true) {
     let retMsg = {};
     const configPath = path.join(ROOT_DIR, PROJECTS_DIR, this.projectDir, CONFIG_FILE_NAME);
@@ -191,6 +311,11 @@ class Project {
     return retMsg;
   }
 
+  /**
+   * Entpackt eine Gerber-ZIP-Datei, legt ein neues Versionsverzeichnis an und kombiniert Drill-Dateien.
+   * @param {string} file - Pfad zur ZIP-Datei.
+   * @returns {Promise<Object>} Promise mit Rückmeldung.
+   */
   uploadGerber(file) {
     return new Promise((resolve, reject) => {
       let retMsg = {};
@@ -223,7 +348,11 @@ class Project {
             this.sendWS(this.createMessage("uploadGerber", "run", "Gerber Versionsverzeichniss angelegt", { state: "dirRenamed" }));
 
             // Kombiniere die Drill-Dateien mit Werkzeuganpassung
-            combineDrillFilesWithTools(newGerberDir);
+            const drillFiles = fs.readdirSync(newGerberDir).filter((file) => file.endsWith(".DRL") && file !== DRILLMERGE_FILE_NAME);
+            const drillContentsArray = drillFiles.map((file) => fs.readFileSync(path.join(newGerberDir, file), "utf-8"));
+            const combinedDrillContent = mergeGerberDrilling(drillContentsArray);
+            const combinedDrillFilePath = path.join(newGerberDir, DRILLMERGE_FILE_NAME);
+            fs.writeFileSync(combinedDrillFilePath, combinedDrillContent, "utf-8");
             this.sendWS(this.createMessage("uploadGerber", "run", "Bohr-Dateien zusammengefügt", { state: "drillMerged" }));
 
             this.save(false);
@@ -244,6 +373,11 @@ class Project {
     });
   }
 
+  /**
+   * Erstellt G-Code durch Ausführen eines Shell-Kommandos und legt ein neues Versionsverzeichnis an.
+   * @param {string} shellCommand - Der auszuführende Shell-Befehl.
+   * @returns {Promise<Object>} Promise mit Rückmeldung.
+   */
   createGCode(shellCommand) {
     return new Promise((resolve, reject) => {
       let retMsg = {};
@@ -286,6 +420,12 @@ class Project {
     });
   }
 
+  /**
+   * Erstellt ein ZIP-Archiv des G-Code-Verzeichnisses für den Download.
+   * @param {number} gerberVersion - Gerber-Version.
+   * @param {number} gcodeVersion - GCode-Version.
+   * @returns {Promise<Object>} Promise mit Rückmeldung.
+   */
   downloadGCode(gerberVersion, gcodeVersion) {
     return new Promise((resolve, reject) => {
       let retMsg = {};
