@@ -4,7 +4,9 @@ const unzipper = require("unzipper");
 const { exec } = require("child_process");
 const archiver = require("archiver");
 const { randomUUID } = require("crypto");
-const { mergeGerberDrilling } = require("./GHerberFunctions");
+const { mergeGerberDrilling } = require("./GerberFunctions");
+const { mergeGCode} = require("./GCodeFunctions");
+
 
 /**
  * Entfernt kritische Zeichen für Dateinamen.
@@ -94,34 +96,40 @@ class Project {
    * Verarbeitet eine eingehende WebSocket-Nachricht und ruft die passende Methode auf.
    * @param {string} message - Die empfangene Nachricht (JSON-String).
    */
-  handleRequenst(message) {
+  async handleRequest(message) {
     let data;
     try {
       data = JSON.parse(message);
     } catch (err) {
-      retMsg = this.createMessage("handleRequenst", "error", err.message, {});
+      const retMsg = this.createMessage("handleRequest", "error", err.message, {});
       this.sendWS(retMsg);
-      return reject(retMsg);
+      return;
     }
 
     // Mapping von Nachrichtentyp zu Methodenname
     const actionMap = {
-      open: () => this.open(data.name),
+      open: async () => await this.open(data.name),
       getConfig: () => this.getConfig(),
       getSetup: () => this.getSetup(),
       setConfig: () => this.setConfig(data.key, data.value),
       setSetup: () => this.setSetup(data.key, data.value),
-      load: () => this.load(),
-      save: () => this.save(),
+      load: async () => await this.load(),
+      save: async () => await this.save(),
+      getGerberVersions: () => this.getGerberVersions(),
+      getGCodeVersions: () => this.getGCodeVersions(data.gerberVersion),
       // Weitere Aktionen nach Bedarf ergänzen
     };
 
     if (typeof actionMap[data.type] === "function") {
-      actionMap[data.type]();
+      try {
+        await actionMap[data.type]();
+      } catch (err) {
+        const retMsg = this.createMessage("handleRequest", "error", err.message, {});
+        this.sendWS(retMsg);
+      }
     } else {
-      retMsg = this.createMessage("handleRequenst", "error", "Unbekannter Anfrage-Typ", {});
+      const retMsg = this.createMessage("handleRequest", "error", "Unbekannter Anfrage-Typ", {});
       this.sendWS(retMsg);
-      return reject(retMsg);
     }
   }
 
@@ -132,6 +140,7 @@ class Project {
    */
   open(projectName) {
     return new Promise((resolve, reject) => {
+      let retMsg = {};
       this.sendWS(this.createMessage("open", "start", "Projekt öffnen gestartet", {}));
       this.projectName = projectName;
       this.projectDir = sanitizeProjectName(projectName);
@@ -169,8 +178,6 @@ class Project {
           this.sendWS(this.createMessage("open", "run", "Projekt wird eingelsen", { state: "get", dir: projectPath }));
           const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
           if (config) {
-            this.projectName = sanitized;
-            this.projectDir = path.join(projectsPath, sanitized);
             this.projectConfig = config.projectConfig || {};
             this.projectSetup = config.projectSetup || { layers: 1, millDrillDia: 0.5, cutterDia: 0.5, boardThickness: 1.7 };
             this.gerberVersion = config.gerberVersion || 0;
@@ -431,7 +438,7 @@ class Project {
       let retMsg = {};
       this.sendWS(this.createMessage("downloadGCode", "start", "G-Code erstellen gestartet", {}));
       // Überprüfe ob das GCode-Verzeichnis existiert
-      const gcodeDir = path.join(this.projectDir, `gcodeV${gerberVersion}.${gcodeVersion}`);
+      const gcodeDir = path.join(this.projectDir, `gcodeV${gerberVersion}_${gcodeVersion}`);
       if (!fs.existsSync(gcodeDir)) {
         retMsg = this.createMessage("downloadGCode", "error", "G-Code Versionverzeichniss nicht gefunden", { gerberVersion: gerberVersion, gcodeVersion: gcodeVersion });
         this.sendWS(retMsg);
@@ -441,7 +448,7 @@ class Project {
       const downloadDir = path.join(ROOT_DIR, "downloads");
       if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
 
-      const zipFile = `${this.projectName}_gcodeV${gerberVersion}.${gcodeVersion}.zip`;
+      const zipFile = `${this.projectName}_gcodeV${gerberVersion}_${gcodeVersion}.zip`;
       const zipFilePath = path.join(downloadDir, zipFile);
 
       this.sendWS(this.createMessage("downloadGCode", "run", "ZIP-Datei wird erstellt [" + zipFile + "]", { name: zipFile }));
@@ -463,6 +470,68 @@ class Project {
       archive.directory(gcodeDir, false);
       archive.finalize();
     });
+  }
+
+  /**
+   * Gibt alle vorhandenen Gerber-Versionsnummern als Array zurück.
+   * @returns {Object} Rückmeldung mit Array der Versionsnummern.
+   */
+  getGerberVersions() {
+    let retMsg = {};
+    try {
+      const projectPath = path.join(ROOT_DIR, PROJECTS_DIR, this.projectDir);
+      if (!fs.existsSync(projectPath)) {
+        retMsg = this.createMessage("getGerberVersions", "error", "Projektverzeichnis nicht gefunden", []);
+        this.sendWS(retMsg);
+        return retMsg;
+      }
+      // Suche nach Verzeichnissen im Format "gerberV<nummer>"
+      const versions = fs.readdirSync(projectPath)
+        .filter(name => /^gerberV\d+$/.test(name) && fs.statSync(path.join(projectPath, name)).isDirectory())
+        .map(name => parseInt(name.replace("gerberV", ""), 10))
+        .sort((a, b) => a - b);
+
+      retMsg = this.createMessage("getGerberVersions", "done", "Gerber-Versionen gefunden", versions);
+    } catch (err) {
+      retMsg = this.createMessage("getGerberVersions", "error", err.message, []);
+    }
+    this.sendWS(retMsg);
+    return retMsg;
+  }
+
+  /**
+   * Gibt alle vorhandenen GCode-Versionsnummern für eine Gerber-Version als Array zurück.
+   * @param {number} gerberVersion - Die Gerber-Version.
+   * @returns {Object} Rückmeldung mit Array der GCode-Versionsnummern.
+   */
+  getGCodeVersions(gerberVersion) {
+    let retMsg = {};
+    try {
+      const projectPath = path.join(ROOT_DIR, PROJECTS_DIR, this.projectDir);
+      if (!fs.existsSync(projectPath)) {
+        retMsg = this.createMessage("getGCodeVersions", "error", "Projektverzeichnis nicht gefunden", []);
+        this.sendWS(retMsg);
+        return retMsg;
+      }
+      // Suche nach Verzeichnissen im Format "gcodeV<gerberVersion>.<gcodeVersion>"
+      const regex = new RegExp(`^gcodeV${gerberVersion}_(\\d+)$`);
+      const versions = fs.readdirSync(projectPath)
+        .map(name => {
+          const match = name.match(regex);
+          if (match && fs.statSync(path.join(projectPath, name)).isDirectory()) {
+            return parseInt(match[1], 10);
+          }
+          return null;
+        })
+        .filter(v => v !== null)
+        .sort((a, b) => a - b);
+
+      retMsg = this.createMessage("getGCodeVersions", "done", "GCode-Versionen gefunden", versions);
+    } catch (err) {
+      retMsg = this.createMessage("getGCodeVersions", "error", err.message, []);
+    }
+    this.sendWS(retMsg);
+    return retMsg;
   }
 }
 

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PCB 2 G-Code - Main V2</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <table>
+      <tr>
+        <td colspan="2">
+          <div id="messageBox"></div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <div class="sectionHeader">Session & Projekt</div>
+        </td>
+      </tr>
+      <tr>
+        <td>Session-ID:</td>
+        <td><span id="sessionIdBox">-</span></td>
+      </tr>
+      <tr>
+        <td>Projektname:</td>
+        <td><input type="text" id="projectNameInput" placeholder="Projektname" /></td>
+      </tr>
+      <tr>
+        <td>Gerber ZIP-Datei hochladen:</td>
+        <td>
+          <input type="file" id="zipFileInput" />
+          <button id="uploadButton">Upload</button>
+        </td>
+      </tr>
+      <tr>
+        <td>G-Code ZIP herunterladen:</td>
+        <td>
+          <input type="number" id="gerberVersionInput" placeholder="Gerber-Version" style="width: 80px;" />
+          <input type="number" id="gcodeVersionInput" placeholder="GCode-Version" style="width: 80px;" />
+          <button id="downloadZipButton">Download</button>
+        </td>
+      </tr>
+    </table>
+
+    <script>
+      let sessionId = null;
+      let ws = null;
+
+      // Zeigt nur status und msg aus retMsg an
+      function showMessageFromRetMsg(retMsg) {
+        const messageBox = document.getElementById("messageBox");
+        messageBox.style.display = "block";
+        messageBox.className = retMsg.status || "";
+        messageBox.textContent = retMsg.msg || "";
+      }
+
+      // WebSocket-Verbindung aufbauen
+      function connectWebSocket() {
+        if (!sessionId) return;
+        // ws:// oder wss:// je nach Protokoll
+        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const wsUrl = `${protocol}://${window.location.host}/?sessionId=${encodeURIComponent(sessionId)}`;
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          //
+        };
+
+        ws.onmessage = (event) => {
+          // Hier kannst du weitere Nachrichtenbehandlung ergänzen
+          // Beispiel: showMessageFromRetMsg(JSON.parse(event.data));
+        };
+
+        ws.onclose = () => {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "WebSocket getrennt."
+          });
+        };
+
+        ws.onerror = (err) => {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "WebSocket-Fehler."
+          });
+        };
+      }
+
+      // Session anfordern
+      async function fetchSession() {
+        try {
+          const res = await fetch("/api/session");
+          const data = await res.json();
+          if (data.sessionId) {
+            sessionId = data.sessionId;
+            document.getElementById("sessionIdBox").textContent = sessionId;
+            showMessageFromRetMsg({
+              status: "done",
+              msg: "Session erstellt."
+            });
+            connectWebSocket(); // WebSocket nach Session-Erhalt verbinden
+          } else {
+            showMessageFromRetMsg({
+              status: "error",
+              msg: "Session konnte nicht erstellt werden."
+            });
+          }
+        } catch (err) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Fehler beim Abrufen der Session."
+          });
+        }
+      }
+
+      // Gerber-Upload
+      document.getElementById("uploadButton").addEventListener("click", async () => {
+        const fileInput = document.getElementById("zipFileInput");
+        const projectName = document.getElementById("projectNameInput").value.trim();
+        if (!sessionId) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Keine Session vorhanden."
+          });
+          return;
+        }
+        if (!fileInput.files[0]) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Bitte wählen Sie eine ZIP-Datei aus."
+          });
+          return;
+        }
+        const formData = new FormData();
+        formData.append("file", fileInput.files[0]);
+        formData.append("projectName", projectName);
+
+        try {
+          const res = await fetch("/api/upload", {
+            method: "POST",
+            headers: { "x-session-id": sessionId },
+            body: formData,
+          });
+          const retMsg = await res.json();
+          showMessageFromRetMsg(retMsg);
+        } catch (err) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Fehler beim Upload."
+          });
+        }
+      });
+
+      // G-Code Download
+      document.getElementById("downloadZipButton").addEventListener("click", async () => {
+        const gerberVersion = document.getElementById("gerberVersionInput").value;
+        const gcodeVersion = document.getElementById("gcodeVersionInput").value;
+        if (!sessionId) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Keine Session vorhanden."
+          });
+          return;
+        }
+        if (!gerberVersion || !gcodeVersion) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Bitte Versionen angeben."
+          });
+          return;
+        }
+        try {
+          const url = `/api/download?sessionId=${encodeURIComponent(sessionId)}&gerberVersion=${encodeURIComponent(gerberVersion)}&gcodeVersion=${encodeURIComponent(gcodeVersion)}`;
+          const res = await fetch(url);
+          if (!res.ok) {
+            const retMsg = await res.json();
+            showMessageFromRetMsg(retMsg);
+            return;
+          }
+          const blob = await res.blob();
+          const contentDisposition = res.headers.get("Content-Disposition");
+          const fileName = contentDisposition ? contentDisposition.split("filename=")[1]?.replace(/"/g, "") : "download.zip";
+          const a = document.createElement("a");
+          a.href = window.URL.createObjectURL(blob);
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(a.href);
+          a.remove();
+          showMessageFromRetMsg({
+            status: "done",
+            msg: "Download erfolgreich!"
+          });
+        } catch (err) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Fehler beim Download."
+          });
+        }
+      });
+
+      // Initial
+      window.addEventListener("DOMContentLoaded", fetchSession);
+    </script>
+  </body>
+</html>
