@@ -58,7 +58,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     res.status(500).json({
       type: "uploadGerber",
       status: "error",
-      msg: err.msg,
+      msg: err.message,
       data: null
     });
   }

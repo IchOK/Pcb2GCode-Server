@@ -17,7 +17,6 @@
     "extra-passes": 2,
     "mill-feed": 120,
     "mill-speed": 10000,
-    "zwork": -0.15,
     "drill-feed": 60,
     "drill-side": "auto",
     "drill-speed": 10000,
@@ -36,10 +35,56 @@
     "zbridges": -0.6
   },
   "projectSetup": {
-    "layer": 2,
-    "milldrill-diameter": 0.6,
-    "cutter-diameter": 0.5,
-    "thicknes": 1.8
+    "layer": {
+      "name": "Verwende Top-Level",
+      "type": "bool",
+      "value": false
+    },
+    "isoDepth": {
+      "name": "Isolationsfräsen Tiefe",
+      "type": "float",
+      "value": 0.15
+    },
+    "isoDia": {
+      "name": "Isolationsfräsen Durchmesser",
+      "type": "float",
+      "value": 0.5
+    },
+    "millDrillDia": {
+      "name": "Durchmesser Bohrer-Fräser",
+      "type": "float",
+      "value": 0.5
+    },
+    "cutterDia": {
+      "name": "Durchmesser Umriss-Fräser",
+      "type": "float",
+      "value": 0.5
+    },
+    "boardThickness": {
+      "name": "Plattenstärke",
+      "type": "float",
+      "value": 1.8
+    },
+    "backFile": {
+      "name": "Gerber Datei Unterseite",
+      "type": "string",
+      "value": "Gerber_BottomLayer.GBL"
+    },
+    "frontFile": {
+      "name": "Gerber Datei Oberseite",
+      "type": "string",
+      "value": "Gerber_TopLayer.GTL"
+    },
+    "outlineFile": {
+      "name": "Gerber Datei Umriss",
+      "type": "string",
+      "value": "Gerber_BoardOutlineLayer.GKO"
+    },
+    "routingTool": {
+      "name": "Name des Routing Commandline Tools",
+      "type": "string",
+      "value": "pcb2gcode"
+    }
   },
   "globals": {
     "drill-offset": 0.2,

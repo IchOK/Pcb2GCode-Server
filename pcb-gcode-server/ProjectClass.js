@@ -5,7 +5,7 @@ const { exec } = require("child_process");
 const archiver = require("archiver");
 const { randomUUID } = require("crypto");
 const { mergeGerberDrilling } = require("./GerberFunctions");
-const { mergeGCode } = require("./GCodeFunctions");
+const { getCommand, mergeGCode } = require("./GCodeFunctions");
 const { rejects } = require("assert");
 
 /**
@@ -119,6 +119,7 @@ class Project {
         getProjects: () => this.getProjects(),
         getGerberVersions: () => this.getGerberVersions(),
         getGCodeVersions: () => this.getGCodeVersions(data.gerberVersion),
+        createGCode: async () => this.createGCode(),
         // Weitere Aktionen nach Bedarf ergänzen
       };
 
@@ -185,7 +186,18 @@ class Project {
           }
           // Default-Konfiguration in config.json speichern
           this.projectConfig = defaultConfig.projectConfig || {};
-          this.projectSetup = defaultConfig.projectSetup || { layers: 1, millDrillDia: 0.5, cutterDia: 0.5, boardThickness: 1.7 };
+          this.projectSetup = defaultConfig.projectSetup || {
+            layer: { name: "Verwende Top-Level", type: "bool", value: false },
+            isoDepth: { name: "Isolationsfräsen Tiefe", type: "float", value: 0.15 },
+            isoDia: { name: "Isolationsfräsen Durchmesser", type: "float", value: 0.5 },
+            millDrillDia: { name: "Durchmesser Bohrer-Fräser", type: "float", value: 0.5 },
+            cutterDia: { name: "Durchmesser Umriss-Fräser", type: "float", value: 0.5 },
+            boardThickness: { name: "Plattenstärke", type: "float", value: 1.8 },
+            backFile: { name: "Gerber Datei Unterseite", type: "string", value: "Gerber_BottomLayer.GBL" },
+            frontFile: { name: "Gerber Datei Oberseite", type: "string", value: "Gerber_TopLayer.GTL" },
+            outlineFile: { name: "Gerber Datei Umriss", type: "string", value: "Gerber_BoardOutlineLayer.GKO" },
+            routingTools: { name: "Name des Routing Commandline Tools", type: "string", value: "pcb2gcode" },
+          };
           this.gerberVersion = 0;
           this.gcodeVersion = 0;
           this.save(false);
@@ -199,10 +211,10 @@ class Project {
           this.sendWS(this.createMessage("open", "run", "Projekt wird eingelsen", { state: "get", dir: projectPath }));
           const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
           if (config) {
-            this.projectConfig = config.projectConfig || {};
-            this.projectSetup = config.projectSetup || { layers: 1, millDrillDia: 0.5, cutterDia: 0.5, boardThickness: 1.7 };
-            this.gerberVersion = config.gerberVersion || 0;
-            this.gcodeVersion = config.gcodeVersion || 0;
+            this.projectConfig = config.projectConfig;
+            this.projectSetup = config.projectSetup;
+            this.gerberVersion = config.gerberVersion;
+            this.gcodeVersion = config.gcodeVersion;
             const data = {
               projectName: this.projectName,
               projectConfig: this.projectConfig,
@@ -456,17 +468,36 @@ class Project {
    * @throws {Error} Wenn ein Fehler beim Erstellen des G-Codes auftritt.
    * @throws {Error} Wenn ein Fehler beim Umbenennen des Verzeichnisses auftritt.
    */
-  createGCode(shellCommand) {
+  createGCode() {
     return new Promise((resolve, reject) => {
-      const projectPath = path.join(ROOT_DIR, PROJECTS_DIR, this.projectDir);
       let retMsg = {};
       this.sendWS(this.createMessage("createGCode", "start", "G-Code erstellen gestartet", {}));
-      // Erstelle create-Verzeichnis
-      const createDir = path.join(projectPath, "create_" + randomUUID());
-      fs.mkdirSync(createDir, { recursive: true });
-      this.sendWS(this.createMessage("createGCode", "run", "G-Code Temp-Verzeichniss erstellt", { state: "createDir", dir: createDir }));
 
-      exec(shellCommand, { cwd: createDir }, (error, stdout, stderr) => {
+      // Erstelle create-Verzeichnis
+      const projectPath = path.join(ROOT_DIR, PROJECTS_DIR, this.projectDir);
+      const createPath = path.join(projectPath, "create_" + randomUUID());
+      fs.mkdirSync(createPath, { recursive: true });
+      this.sendWS(this.createMessage("createGCode", "run", "G-Code Temp-Verzeichniss erstellt", { state: "createDir", dir: createPath }));
+
+      // Gerber-Pfad ermitteln
+      const gerberPath = path.join(projectPath, `gerberV${this.gerberVersion}`);
+
+      // Default Konfig aus dem Root Verzeichniss einlesen und globals ermitteln
+      const defaultConfig = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, DEFAULT_CONFIG_FILE), "utf-8"));
+      const globals = defaultConfig.globals;
+
+      let command = "";
+      // Commandline Befehl erstellen
+      try {
+        command = getCommand(gerberPath, DRILLMERGE_FILE_NAME, this.projectSetup, this.projectConfig, globals, createPath);
+        this.sendWS(this.createMessage("createGCode", "run", "G-Code wurde erstellt", { state: "createGCode", command: command }));
+      } catch (err) {
+        retMsg = this.createMessage("createGCode", "error", err.message, {});
+        this.sendWS(retMsg);
+        return reject(retMsg);
+      }
+
+      exec(command, { cwd: projectPath }, (error, stdout, stderr) => {
         if (error) {
           retMsg = this.createMessage("createGCode", "error", stderr || error.message, {});
           this.sendWS(retMsg);
@@ -474,6 +505,9 @@ class Project {
         }
 
         try {
+          // Merge der G-Code Files der Unterseite, falls sie den gleichen Fräser durchmesser haben
+          mergeGCode(createPath, this.projectSetup);
+
           // Ermittle anhand der GCode-Liste die nächste Version
           const gcodeList = this.listGCodeVersions(projectPath, this.gerberVersion);
           if (gcodeList.length > 0) {
@@ -484,7 +518,7 @@ class Project {
           const newGCodeDir = path.join(projectPath, `gcodeV${this.gerberVersion}.${this.gcodeVersion}`);
 
           // Tempräreas Verzeichniss umbenennen
-          fs.renameSync(createDir, newGCodeDir);
+          fs.renameSync(createPath, newGCodeDir);
           this.sendWS(this.createMessage("createGCode", "run", "G-Code Versionsverzeichniss angelegt", { state: "dirRenamed" }));
 
           this.save(false);
