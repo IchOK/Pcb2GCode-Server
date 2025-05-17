@@ -11,51 +11,77 @@
       <tr>
         <td colspan="2">
           <div id="messageBox"></div>
-        </td>
+            <!-- Platzhalter für Meldetext -->
+          </td>
       </tr>
-      <tr>
-        <td colspan="2">
-          <div class="sectionHeader">Session & Projekt</div>
-        </td>
-      </tr>
-      <tr>
         <td>Session-ID:</td>
         <td><span id="sessionIdBox">-</span></td>
       </tr>
       <tr>
-        <td>Projektname:</td>
-        <td><input type="text" id="projectNameInput" placeholder="Projektname" /></td>
+        <td colspan="2">
+          <div class="sectionHeader">Projekt erstellen</div>
+        </td>
+      </tr>
+      <tr>
+        <td><input type="text" id="newProjectInput" placeholder="Projektname" /></td>
+        <td><button id="createProjectButton">Projekt erstellen</button></td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <div class="sectionHeader">Projekt auswählen</div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <select name="project" id="projectSelect" style="width: 100%; height: 40px">
+            <!-- Platzhalter für Projekte -->
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td>Gerber Version:</td>
+        <td>
+          <select name="gerber" id="gerberSelect" style="width: 100%; height: 40px">
+            <!-- Platzhalter für Gerber Versionen -->
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td>G-Code Version:</td>
+        <td>
+          <select name="gcode" id="gcodeSelect" style="width: 100%; height: 40px">
+            <!-- Platzhalter für G-Code Versionen -->
+          </select>
+        </td>
       </tr>
       <tr>
         <td>Gerber ZIP-Datei hochladen:</td>
-        <td>
-          <input type="file" id="zipFileInput" />
-          <button id="uploadButton">Upload</button>
-        </td>
+        <td><button id="uploadButton">Upload</button></td>
+        <input type="file" id="zipFileInput" style="display: none" />
       </tr>
       <tr>
-        <td>G-Code ZIP herunterladen:</td>
-        <td>
-          <input type="number" id="gerberVersionInput" placeholder="Gerber-Version" style="width: 80px;" />
-          <input type="number" id="gcodeVersionInput" placeholder="GCode-Version" style="width: 80px;" />
-          <button id="downloadZipButton">Download</button>
-        </td>
+        <td>Konfiguration bearbeiten:</td>
+        <td><button id="editConfigButton">Edit</button></td>
+      </tr>
+      <tr>
+        <td>Gerber in G-Code konvertieren:</td>
+        <td><button id="runPcb2GcodeButton">Convert</button></td>
+      </tr>
+      <tr>
+        <td>G-Code ZIP-Datei herunterladen:</td>
+        <td><button id="downloadZipButton">Download</button></td>
       </tr>
     </table>
 
+    <script src="fetchFunctions.js"></script>
+    <script src="htmlFunctions.js"></script>
     <script>
       let sessionId = null;
       let ws = null;
 
-      // Zeigt nur status und msg aus retMsg an
-      function showMessageFromRetMsg(retMsg) {
-        const messageBox = document.getElementById("messageBox");
-        messageBox.style.display = "block";
-        messageBox.className = retMsg.status || "";
-        messageBox.textContent = retMsg.msg || "";
-      }
-
-      // WebSocket-Verbindung aufbauen
+      //-------------------------------------------------
+      // FUNKTION - WebSocket-Verbindung herstellen
+      //-------------------------------------------------
       function connectWebSocket() {
         if (!sessionId) return;
         // ws:// oder wss:// je nach Protokoll
@@ -68,11 +94,26 @@
         };
 
         ws.onmessage = (event) => {
-          // Hier kannst du weitere Nachrichtenbehandlung ergänzen
-          // Beispiel: showMessageFromRetMsg(JSON.parse(event.data));
+          const Msg = JSON.parse(event.data);
+          if (Msg.status === "done") {
+            switch (Msg.type) {
+              case "open":
+                break;
+              case "getProjects":
+                break;
+              case "getGerberVersions":
+                break;
+              case "getGCodeVersions":
+                break;
+              default:
+                break;
+            }
+          }
+          showMessageFromRetMsg(Msg);
         };
 
         ws.onclose = () => {
+        
           showMessageFromRetMsg({
             status: "error",
             msg: "WebSocket getrennt."
@@ -87,34 +128,94 @@
         };
       }
 
-      // Session anfordern
-      async function fetchSession() {
-        try {
-          const res = await fetch("/api/session");
-          const data = await res.json();
-          if (data.sessionId) {
-            sessionId = data.sessionId;
-            document.getElementById("sessionIdBox").textContent = sessionId;
-            showMessageFromRetMsg({
-              status: "done",
-              msg: "Session erstellt."
-            });
-            connectWebSocket(); // WebSocket nach Session-Erhalt verbinden
-          } else {
-            showMessageFromRetMsg({
-              status: "error",
-              msg: "Session konnte nicht erstellt werden."
-            });
-          }
-        } catch (err) {
+
+
+      //-------------------------------------------------
+      // FUNCTION - Send WebSocket Message
+      //-------------------------------------------------
+      function sendWebSocketMessage(msgObject) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
           showMessageFromRetMsg({
             status: "error",
-            msg: "Fehler beim Abrufen der Session."
+            msg: "WebSocket nicht verbunden."
           });
+          return;
         }
+        const message = JSON.stringify(msgObject);
+        ws.send(message);
       }
 
-      // Gerber-Upload
+      //-------------------------------------------------
+      // LISTENER - Projekt erstellen
+      //-------------------------------------------------
+      document.getElementById("createProjectButton").addEventListener("click", async () => {
+        const projectName = document.getElementById("newProjectInput").value.trim();
+        if (!sessionId) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Keine Session vorhanden."
+          });
+          return;
+        }
+        if (!projectName) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Bitte Projektname angeben."
+          });
+          return;
+        }
+
+      });
+
+      //-------------------------------------------------
+      // LISTENER - Projekt auswählen
+      //-------------------------------------------------
+      document.getElementById("projectSelect").addEventListener("change", async (event) => {
+        const selectedProject = event.target.value;
+        if (!sessionId) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Keine Session vorhanden."
+          });
+          return;
+        }
+        if (!selectedProject) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Bitte Projekt auswählen."
+          });
+          return;
+        }
+        // WebSocket-Nachricht senden
+        sendWebSocketMessage({type: "open", name: selectedProject });
+      });
+
+      //-------------------------------------------------
+      // LISTENER - Gerber auswählen
+      //-------------------------------------------------
+      document.getElementById("gerberSelect").addEventListener("change", async (event) => {
+        const selectedGerber = event.target.value;
+        if (!sessionId) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Keine Session vorhanden."
+          });
+          return;
+        }
+        if (!selectedGerber) {
+          showMessageFromRetMsg({
+            status: "error",
+            msg: "Bitte Gerber-Version auswählen."
+          });
+          return;
+        }
+        // WebSocket-Nachricht senden
+        sendWebSocketMessage({type: "getGCodeVersions", gerberVersion: selectedGerber });
+      });
+
+      //-------------------------------------------------
+      // LISTENER - Gerber-Upload
+      //-------------------------------------------------
       document.getElementById("uploadButton").addEventListener("click", async () => {
         const fileInput = document.getElementById("zipFileInput");
         const projectName = document.getElementById("projectNameInput").value.trim();
@@ -152,10 +253,12 @@
         }
       });
 
-      // G-Code Download
+      //-------------------------------------------------
+      // LISTENER - G-Code Download
+      //-------------------------------------------------
       document.getElementById("downloadZipButton").addEventListener("click", async () => {
-        const gerberVersion = document.getElementById("gerberVersionInput").value;
-        const gcodeVersion = document.getElementById("gcodeVersionInput").value;
+        const gerberVersion = document.getElementById("gerberSelect").value;
+        const gcodeVersion = document.getElementById("gcodeSelect").value;
         if (!sessionId) {
           showMessageFromRetMsg({
             status: "error",

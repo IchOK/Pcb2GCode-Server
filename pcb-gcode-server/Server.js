@@ -21,10 +21,6 @@ const wss = new WebSocket.Server({ server });
 
 const sessionHandler = new SessionHandler();
 
-// === Statische Dateien bereitstellen ===
-const WWW_DIR = path.join(__dirname, "www");
-app.use(express.static(WWW_DIR));
-
 // === Middleware für JSON-Parsing ===
 app.use(express.json());
 
@@ -62,7 +58,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     res.status(500).json({
       type: "uploadGerber",
       status: "error",
-      msg: err.message,
+      msg: err.msg,
       data: null
     });
   }
@@ -93,8 +89,58 @@ app.get("/api/download", async (req, res) => {
     res.status(500).json({
       type: "downloadGCode",
       status: "error",
-      msg: err.message,
+      msg: err.msg,
       data: null
+    });
+  }
+});
+
+app.post("/api/:action", async (req, res) => {
+  const action = req.params.action;
+  const sessionId = req.headers["x-session-id"] || req.body.sessionId;
+  const session = sessionHandler.getSession(sessionId);
+
+  if (!session) {
+    return res.status(401).json({
+      type: action,
+      status: "error",
+      msg: "Ungültige Session",
+      data: null,
+    });
+  }
+
+  // Message-Objekt bauen (alle Body-Parameter übernehmen)
+  const message = {
+    type: action,
+    ...req.body,
+  };
+
+  try {
+    // handleRequest erwartet einen JSON-String
+    session.handleRequest(JSON.stringify(message))
+      .then((response) => {
+        // Antwort an den Client senden
+        res.json({
+          type: action,
+          status: "ok",
+          msg: response.msg,
+          data: response.data,
+        });
+      })
+      .catch((err) => {
+        res.status(500).json({
+          type: action,
+          status: "error",
+          msg: err.msg,
+          data: err.data,
+        });
+      });
+  } catch (err) {
+    res.status(500).json({
+      type: action,
+      status: "error",
+      msg: err.message,
+      data: null,
     });
   }
 });
@@ -137,6 +183,16 @@ wss.on("connection", (ws, req) => {
     session.setWebSocket(null);
   });
 });
+
+const WWW_DIR = path.join(__dirname, "www");
+
+// === IndexV2.html für Root-Route bereitstellen ===
+app.get("/", (req, res) => {
+  res.sendFile(path.join(WWW_DIR, "indexV2.html"));
+});
+
+// === Statische Dateien bereitstellen ===
+app.use(express.static(WWW_DIR));
 
 // === Server starten ===
 const PORT = process.env.PORT || 3000;
