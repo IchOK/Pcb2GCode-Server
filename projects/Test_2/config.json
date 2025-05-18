@@ -1,0 +1,92 @@
+{
+  "name": "Test_2",
+  "projectConfig": {
+    "voronoi": false,
+    "metric": true,
+    "metricoutput": true,
+    "mirror-axis": 0,
+    "mirror-yaxis": true,
+    "nog64": false,
+    "optimise": 0,
+    "tile-x": 1,
+    "tile-y": 1,
+    "tolerance": 0.01,
+    "zchange": 10,
+    "zchange-absolute": false,
+    "zero-start": true,
+    "zsafe": 5,
+    "extra-passes": 2,
+    "mill-feed": 120,
+    "mill-speed": 10000,
+    "drill-feed": 60,
+    "drill-side": "auto",
+    "drill-speed": 10000,
+    "milldrill": true,
+    "nog81": false,
+    "nog91-1": false,
+    "onedrill": false,
+    "cut-feed": 120,
+    "cut-infeed": 0.25,
+    "cut-side": "auto",
+    "cut-speed": 10000,
+    "cut-vertfeed": 60,
+    "fill-outline": true,
+    "bridges": 0.5,
+    "bridgesnum": 2,
+    "zbridges": -0.6
+  },
+  "projectSetup": {
+    "layer": {
+      "name": "Verwende Top-Level",
+      "type": "bool",
+      "value": false
+    },
+    "isoDepth": {
+      "name": "Isolationsfräsen Tiefe",
+      "type": "float",
+      "value": 0.15
+    },
+    "isoDia": {
+      "name": "Isolationsfräsen Durchmesser",
+      "type": "float",
+      "value": 0.5
+    },
+    "millDrillDia": {
+      "name": "Durchmesser Bohrer-Fräser",
+      "type": "float",
+      "value": 0.5
+    },
+    "cutterDia": {
+      "name": "Durchmesser Umriss-Fräser",
+      "type": "float",
+      "value": 0.5
+    },
+    "boardThickness": {
+      "name": "Plattenstärke",
+      "type": "float",
+      "value": 1.8
+    },
+    "backFile": {
+      "name": "Gerber Datei Unterseite",
+      "type": "string",
+      "value": "Gerber_BottomLayer.GBL"
+    },
+    "frontFile": {
+      "name": "Gerber Datei Oberseite",
+      "type": "string",
+      "value": "Gerber_TopLayer.GTL"
+    },
+    "outlineFile": {
+      "name": "Gerber Datei Umriss",
+      "type": "string",
+      "value": "Gerber_BoardOutlineLayer.GKO"
+    },
+    "routingTool": {
+      "name": "Name des Routing Commandline Tools",
+      "type": "string",
+      "value": "pcb2gcode"
+    }
+  },
+  "gerberVersion": 1,
+  "gcodeVersion": 0
+}
